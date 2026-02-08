@@ -34,7 +34,7 @@ elif device.type == "mps":
 
 np.random.seed(3)
 
-def show_mask(mask, ax, random_color=False, borders=True, save_contours=False, contour_output_dir=None, epsilon=2.0):
+def show_mask(mask, ax, random_color=False, borders=True, save_contours=False, contour_output_dir=None, epsilon=2.0, plot_contours=True):
     if random_color:
         color = np.concatenate([np.random.random(3), np.array([0.6])], axis=0)
     else:
@@ -42,11 +42,12 @@ def show_mask(mask, ax, random_color=False, borders=True, save_contours=False, c
     h, w = mask.shape[-2:]
     mask = mask.astype(np.uint8)
     mask_image = mask.reshape(h, w, 1) * color.reshape(1, 1, -1)
-    if borders:
+    
+    simplified_contours = []
+    if borders or plot_contours:
         import cv2
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
         # Simplify contours with polygon approximation
-        simplified_contours = []
         for contour in contours:
             # If epsilon is between 0 and 1, treat as relative to perimeter
             if 0 < epsilon < 1:
@@ -56,7 +57,24 @@ def show_mask(mask, ax, random_color=False, borders=True, save_contours=False, c
                 eps = epsilon
             approx = cv2.approxPolyDP(contour, epsilon=eps, closed=True)
             simplified_contours.append(approx)
-        mask_image = cv2.drawContours(mask_image, simplified_contours, -1, (0, 1, 0, 1), thickness=4)
+        
+        if borders:
+            mask_image = cv2.drawContours(mask_image, simplified_contours, -1, (0, 1, 0, 1), thickness=4)
+        
+        # Plot simplified contours as matplotlib lines for better visibility
+        if plot_contours:
+            for contour in simplified_contours:
+                if len(contour) > 0:
+                    # Reshape contour points
+                    points = contour.reshape(-1, 2)
+                    # Close the polygon by appending first point
+                    if len(points) > 0:
+                        closed_points = np.vstack([points, points[0]])
+                        # Plot as red line with markers at vertices
+                        ax.plot(closed_points[:, 0], closed_points[:, 1], 'r-', linewidth=3, alpha=0.8)
+                        # Plot vertices as blue dots
+                        ax.scatter(points[:, 0], points[:, 1], c='blue', s=30, alpha=0.8, edgecolors='white', linewidths=1)
+        
         # Save contours to CSV files if requested
         if save_contours:
             import os
@@ -73,6 +91,7 @@ def show_mask(mask, ax, random_color=False, borders=True, save_contours=False, c
                 filename = os.path.join(contour_output_dir, f"contour_{timestamp}_{i}.csv")
                 df.to_csv(filename, index=False)
                 print(f"Saved simplified contour ({len(points)} points) to {filename}")
+    
     ax.imshow(mask_image)
 
 def show_points(coords, labels, ax, marker_size=375):
@@ -86,12 +105,12 @@ def show_box(box, ax):
     w, h = box[2] - box[0], box[3] - box[1]
     ax.add_patch(plt.Rectangle((x0, y0), w, h, edgecolor='green', facecolor=(0, 0, 0, 0), lw=2))    
 
-def show_masks(image, masks, scores, point_coords=None, box_coords=None, input_labels=None, borders=True, save_contours=False, contour_output_dir=None, epsilon=2.0):
+def show_masks(image, masks, scores, point_coords=None, box_coords=None, input_labels=None, borders=True, save_contours=False, contour_output_dir=None, epsilon=2.0, plot_contours=True):
     for i, (mask, score) in enumerate(zip(masks, scores)):
         mask = 1 - mask
         plt.figure(figsize=(10, 10))
         plt.imshow(image)
-        show_mask(mask, plt.gca(), borders=borders, save_contours=save_contours, contour_output_dir=contour_output_dir, epsilon=epsilon)
+        show_mask(mask, plt.gca(), borders=borders, save_contours=save_contours, contour_output_dir=contour_output_dir, epsilon=epsilon, plot_contours=plot_contours)
         if point_coords is not None:
             assert input_labels is not None
             show_points(point_coords, input_labels, plt.gca())
